@@ -1,0 +1,5 @@
+
+---
+deployment:
+  tasks:
+    - /bin/tar --exclude='./.git' --exclude='./node_modules' --exclude='./.next' --exclude='./.env*' --exclude='./tmp' -cf - . | /bin/tar -xf - -C /home/anytimes/portal
