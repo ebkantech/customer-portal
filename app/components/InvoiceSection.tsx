@@ -136,7 +136,17 @@ export function InvoiceSection({
   if (!list.length) return <Empty icon="▤" title="No invoices yet" text={emptyText} />;
   const showDue = list.some((inv) => inv.due_date);
 
-  const action = (inv: Invoice) => {
+  const action = (inv: Invoice) => (
+    <>
+      {inv.payment_url?.startsWith("https://") && (
+        <a className="pay-button" href={inv.payment_url} target="_blank" rel="noopener noreferrer">
+          Pay now
+        </a>
+      )}
+      {downloadAction(inv)}
+    </>
+  );
+  const downloadAction = (inv: Invoice) => {
     const key = String(inv.id);
     const label = invoiceLabel(inv);
     if (inv.pdf_available !== true)

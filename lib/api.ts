@@ -17,6 +17,8 @@ export type Party = {
   type?: string;
   /** Optional: when a Rental customer's portal access ends (backend-calculated). */
   portal_access_ends_at?: string | null;
+  /** No rental is running: the portal shows the repair job only. */
+  repair_only?: boolean;
   [key: string]: unknown;
 };
 export type InvoiceItem = {
@@ -46,6 +48,8 @@ export type Invoice = {
   items?: InvoiceItem[];
   /** True only when `/portal/invoices/<id>/pdf/` can serve this invoice. */
   pdf_available?: boolean;
+  /** The link staff sent for a bill still owed; null when there is none. */
+  payment_url?: string | null;
 };
 /** `/portal/invoices/<id>/` (Django PortalInvoiceDetailSerializer). */
 export type InvoiceDetail = Invoice & {
@@ -60,6 +64,51 @@ export type RepairInvoice = {
   amount?: number | string;
   status?: string;
   date?: string;
+  payment_url?: string | null;
+};
+export type LaptopStatus = {
+  /** preparing | ready | with_you | returned | cancelled */
+  key: string;
+  label: string;
+  detail: string;
+  handed_over_on?: string | null;
+};
+export type HeldPayment = {
+  code?: string;
+  amount?: number | string;
+  status?: string;
+  paid_on?: string | null;
+  refunded?: number | string;
+  payment_url?: string | null;
+};
+export type PaymentDue = {
+  id: number | string;
+  code?: string;
+  amount?: number | string;
+  due_date?: string | null;
+  status?: string;
+  payment_url?: string | null;
+};
+export type RentalPayment = {
+  id: number | string;
+  code?: string;
+  label?: string;
+  amount?: number | string;
+  paid_on?: string | null;
+  pay_method?: string;
+  status?: string;
+  refunded?: number | string;
+};
+export type RentalIssue = {
+  id: number | string;
+  rental: number | string;
+  agreement_code?: string;
+  title: string;
+  description?: string;
+  /** Open | In progress | Resolved */
+  status?: string;
+  raised_at?: string;
+  resolved_at?: string | null;
 };
 export type Rental = {
   id: number | string;
@@ -77,6 +126,13 @@ export type Rental = {
   end_date?: string | null;
   total_monthly_fee?: number | string;
   devices?: { description?: string; serial_number?: string; monthly_fee?: number | string }[];
+  laptop_status?: LaptopStatus;
+  security_deposit?: HeldPayment | null;
+  advance?: HeldPayment | null;
+  payments_due?: PaymentDue[];
+  payment_history?: RentalPayment[];
+  /** Set when a signed copy is on file. */
+  signed_agreement_uploaded_at?: string | null;
 };
 export type Warranty = {
   id: number | string;
@@ -88,6 +144,9 @@ export type Warranty = {
 };
 export type Repair = {
   id: number | string;
+  store_name?: string;
+  /** Every stage a job passes through, in order, from Django. */
+  stages?: string[];
   code?: string;
   brand?: string;
   model_name?: string;
@@ -373,6 +432,29 @@ function filenameFromDisposition(header: string | null) {
  * non-PDF or failed response throws ApiError, so callers never report a
  * download that didn't happen.
  */
+/** A signed agreement can be a PDF or a photo, so the file's own type and name are kept. */
+export async function downloadFile(path: string, filename: string) {
+  const response = await send(path, {}, true);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw toApiError(response, data);
+  }
+  const blob = await response.blob();
+  const name = safeFilename(filenameFromDisposition(response.headers.get("Content-Disposition")) || filename, filename);
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+}
+
 export async function downloadPdf(path: string, filename: string) {
   const response = await send(path, { headers: { Accept: "application/pdf" } }, true);
   if (!response.ok) {

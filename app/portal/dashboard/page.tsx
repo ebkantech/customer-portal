@@ -22,6 +22,7 @@ import {
   Warranty,
 } from "@/lib/api";
 import { InvoiceSection } from "@/app/components/InvoiceSection";
+import { LaptopStatusBar, RentalIssues, RentalMoney, RentalRecords, RepairProgress } from "@/app/components/RentalCare";
 import { Empty, ProfileRow, Section, SectionError, SkeletonRows, StatCard, Status } from "@/app/components/ui";
 
 type Tab = "overview" | "rentals" | "purchases" | "invoices" | "repairs" | "warranties" | "feedback";
@@ -30,7 +31,7 @@ type SectionKey = "invoices" | "rentals" | "repairs" | "warranties";
 type Ended = { title: string; text: string };
 
 /** Navigation per account type. Rentals appear only for Rental accounts (or, neutrally labelled, when the backend returned rental records for an account of unknown type). */
-function navFor(type: AccountType, hasRentals: boolean): NavItem[] {
+function navFor(type: AccountType, hasRentals: boolean, repairOnly: boolean): NavItem[] {
   const tail: NavItem[] = [
     { id: "invoices", label: "Invoices", icon: "▤" },
     { id: "repairs", label: "Repairs", icon: "⚒" },
@@ -38,10 +39,10 @@ function navFor(type: AccountType, hasRentals: boolean): NavItem[] {
     { id: "feedback", label: "Feedback", icon: "☆" },
   ];
   const overview: NavItem = { id: "overview", label: "Overview", icon: "◫" };
-  if (type === "rental") return [overview, { id: "rentals", label: "My rentals", icon: "↻" }, ...tail];
-  if (type === "dealer") return [overview, { id: "purchases", label: "Orders & purchases", icon: "▦" }, ...tail];
-  if (type === "retail") return [overview, { id: "purchases", label: "Purchases", icon: "▣" }, ...tail];
-  return hasRentals ? [overview, { id: "rentals", label: "Rental agreements", icon: "↻" }, ...tail] : [overview, ...tail];
+  if (type === "rental" && !repairOnly) return [overview, { id: "rentals", label: "My rentals", icon: "↻" }, ...tail];
+  // Everyone else reaches the portal through a repair link: it is only for following that job.
+  if (hasRentals && type === "unknown" && !repairOnly) return [overview, { id: "rentals", label: "Rental agreements", icon: "↻" }, ...tail];
+  return [{ id: "repairs", label: "My repairs", icon: "⚒" }];
 }
 
 const ACCOUNT_COPY: Record<AccountType, { icon: string; intro: string; invoicesEmpty: string }> = {
@@ -52,12 +53,12 @@ const ACCOUNT_COPY: Record<AccountType, { icon: string; intro: string; invoicesE
   },
   dealer: {
     icon: "▦",
-    intro: "Your dealer orders, invoices and service records.",
+    intro: "Follow your repair and pay for it here.",
     invoicesEmpty: "Invoices for your dealer orders will appear here once they are raised.",
   },
   retail: {
     icon: "▣",
-    intro: "Your purchases, invoices, repairs and warranties.",
+    intro: "Follow your repair and pay for it here.",
     invoicesEmpty: "Invoices for your purchases will appear here once they are raised.",
   },
   unknown: {
@@ -112,7 +113,12 @@ export default function DashboardPage() {
   const endSession = useCallback((e: unknown) => {
     clearSession();
     const code = e instanceof ApiError ? e.code : undefined;
-    if (code === "rental_access_ended")
+    if (code === "repair_access_ended")
+      setEnded({
+        title: "Your repair is complete",
+        text: "This portal link closed when your device was delivered. Thank you for choosing us.",
+      });
+    else if (code === "rental_access_ended")
       setEnded({
         title: "Your rental portal access has ended",
         text: "Portal access for rental customers ends when the rental tenure ends. Please contact our team if you think this is a mistake.",
@@ -168,7 +174,7 @@ export default function DashboardPage() {
     setMe({ state: "ready", data: party });
     const keys: SectionKey[] = ["invoices", "repairs", "warranties"];
     // Dealer/Retail accounts never request or show rental records.
-    if (type === "rental" || type === "unknown") keys.push("rentals");
+    if ((type === "rental" || type === "unknown") && party.repair_only !== true) keys.push("rentals");
     else setRentals({ state: "ready", data: [] });
     await Promise.all(keys.map((k) => loadSection(k)));
   }, [router, endSession, loadSection]);
@@ -182,8 +188,10 @@ export default function DashboardPage() {
   const copy = ACCOUNT_COPY[accountType];
   const rentalList = rentals.state === "ready" ? rentals.data : [];
   const invoiceList = invoices.state === "ready" ? invoices.data : [];
-  const nav = useMemo(() => navFor(accountType, rentalList.length > 0), [accountType, rentalList.length]);
-  const activeTab = nav.some((n) => n.id === tab) ? tab : "overview";
+  const repairOnly = party?.repair_only === true;
+  const nav = useMemo(() => navFor(accountType, rentalList.length > 0, repairOnly), [accountType, rentalList.length, repairOnly]);
+  const activeTab = nav.some((n) => n.id === tab) ? tab : nav[0].id;
+  const repairsOnly = !nav.some((n) => n.id === "invoices");
   const activeLabel = nav.find((n) => n.id === activeTab)?.label || "Overview";
 
   const outstanding = invoiceList.filter((inv) => isInvoiceOutstanding(inv.status));
@@ -194,7 +202,7 @@ export default function DashboardPage() {
     0,
   );
   const nextPayment = rentalList
-    .filter((r) => r.next_payment_date)
+    .filter((r) => isRunning(r) && r.next_payment_date)
     .sort((a, b) => String(a.next_payment_date).localeCompare(String(b.next_payment_date)))[0];
   const ticketList = repairs.state === "ready" ? repairs.data.tickets || [] : [];
   const repairInvoices = repairs.state === "ready" ? repairs.data.invoices || [] : [];
@@ -451,11 +459,13 @@ export default function DashboardPage() {
                   <div className="art-square">
                     V<span>+</span>
                   </div>
-                  <div className="art-chip">
-                    ACCOUNT
-                    <br />
-                    OVERVIEW <span>↗</span>
-                  </div>
+                  {!repairsOnly && (
+                    <div className="art-chip">
+                      ACCOUNT
+                      <br />
+                      OVERVIEW <span>↗</span>
+                    </div>
+                  )}
                 </div>
               </section>
 
@@ -513,7 +523,7 @@ export default function DashboardPage() {
                           View all ↗
                         </button>
                       </div>
-                      <RentalList rentals={rentals} limit={2} onRetry={() => void loadSection("rentals")} />
+                      <RentalList rentals={rentals} limit={2} onRetry={() => void loadSection("rentals")} onAuthError={endSession} />
                     </section>
                   )}
 
@@ -581,7 +591,8 @@ export default function DashboardPage() {
                     </div>
                     {rentals.state === "ready" && <span className="count-badge">{plural(rentalList.length, "agreement")}</span>}
                   </div>
-                  <RentalList rentals={rentals} onRetry={() => void loadSection("rentals")} />
+                  <RentalList rentals={rentals} onRetry={() => void loadSection("rentals")} onAuthError={endSession} />
+                  {rentals.state === "ready" && <RentalIssues rentals={rentalList} onAuthError={endSession} />}
                 </section>
               )}
 
@@ -633,6 +644,7 @@ export default function DashboardPage() {
                           </div>
                           <div className="repair-info">
                             <strong>{t.code || `Ticket #${t.id}`}</strong>
+                            {t.store_name && <p>Store: {t.store_name}</p>}
                             <p>
                               {[t.brand, t.model_name].filter(Boolean).join(" ") || "Device service"}
                               {t.issue ? ` · ${t.issue}` : ""}
@@ -646,13 +658,25 @@ export default function DashboardPage() {
                             )}
                           </div>
                           <Status value={t.status || "Open"} />
+                          {t.stages && t.stages.length > 0 && <RepairProgress stages={t.stages} current={t.status} />}
                         </div>
                       ))}
                     </div>
                   ) : (
                     <Empty icon="⚒" title="No repair tickets" text="Any repair requests linked to your account will be listed here." />
                   )}
-                  {repairInvoices.length > 0 && (
+                  {repairsOnly && repairInvoices.length > 0 && invoices.state === "ready" && (
+                    <div className="sub-list">
+                      <h4>Your invoices</h4>
+                      <InvoiceSection
+                        invoices={{ state: "ready", data: invoices.data.filter((inv) => inv.source === "repair") }}
+                        onRetry={() => void loadSection("invoices")}
+                        onAuthError={endSession}
+                        emptyText={copy.invoicesEmpty}
+                      />
+                    </div>
+                  )}
+                  {!repairsOnly && repairInvoices.length > 0 && (
                     <div className="sub-list">
                       <h4>Service invoices</h4>
                       {repairInvoices.map((inv) => (
@@ -791,10 +815,24 @@ const RENTAL_STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
-function RentalList({ rentals, limit, onRetry }: { rentals: Section<Rental[]>; limit?: number; onRetry: () => void }) {
+const isRunning = (r: Rental) => r.status === "active" || r.status === "approved";
+
+function RentalList({
+  rentals,
+  limit,
+  onRetry,
+  onAuthError,
+}: {
+  rentals: Section<Rental[]>;
+  limit?: number;
+  onRetry: () => void;
+  onAuthError: (e: unknown) => void;
+}) {
   if (rentals.state === "loading") return <SkeletonRows rows={2} label="Loading rentals" />;
   if (rentals.state === "error") return <SectionError message={rentals.error} onRetry={onRetry} />;
-  const list = limit ? rentals.data.slice(0, limit) : rentals.data;
+  // running agreements first, then the older ones
+  const sorted = [...rentals.data].sort((a, b) => Number(isRunning(b)) - Number(isRunning(a)));
+  const list = limit ? sorted.slice(0, limit) : sorted;
   if (!list.length)
     return <Empty icon="↻" title="No rental agreements" text="Rental agreements linked to your account will appear here." />;
   return (
@@ -819,6 +857,7 @@ function RentalList({ rentals, limit, onRetry }: { rentals: Section<Rental[]>; l
                 <Status value="Payment overdue" />
               ) : null}
             </div>
+            {r.laptop_status && <LaptopStatusBar status={r.laptop_status} />}
             <dl className="rental-meta">
               <div>
                 <dt>Start date</dt>
@@ -834,13 +873,15 @@ function RentalList({ rentals, limit, onRetry }: { rentals: Section<Rental[]>; l
                   <dd>{formatDate(r.end_date)}</dd>
                 </div>
               )}
-              <div>
-                <dt>Next payment</dt>
-                <dd className={r.next_payment_overdue ? "overdue-text" : undefined}>
-                  {r.next_payment_date ? formatDate(r.next_payment_date) : "—"}
-                  {r.next_payment_overdue ? " · Overdue" : ""}
-                </dd>
-              </div>
+              {isRunning(r) && (
+                <div>
+                  <dt>Next payment</dt>
+                  <dd className={r.next_payment_overdue ? "overdue-text" : undefined}>
+                    {r.next_payment_date ? formatDate(r.next_payment_date) : "—"}
+                    {r.next_payment_overdue ? " · Overdue" : ""}
+                  </dd>
+                </div>
+              )}
             </dl>
             {r.devices && r.devices.length > 0 && (
               <ul className="rental-devices" aria-label="Rented devices">
@@ -852,6 +893,8 @@ function RentalList({ rentals, limit, onRetry }: { rentals: Section<Rental[]>; l
                 ))}
               </ul>
             )}
+            <RentalMoney rental={r} />
+            <RentalRecords rental={r} onAuthError={onAuthError} />
             {tenure > 0 && (
               <div className="rental-progress">
                 <div className="progress-label">
