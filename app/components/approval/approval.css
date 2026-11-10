@@ -1,0 +1,51 @@
+/* Shared additions for the approval pages built on app/rental-approval/rental-approval.css
+   (repair, repair order, on-site service bill) and the staff password page.
+   Everything here uses the ap- prefix; the ra- design tokens come from rental-approval.css. */
+
+/* a section heading + count that sits inside its card */
+.ap-card-head { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; }
+.ap-card-head h2 { margin: 0; }
+
+/* decision buttons: 2 or 3 across on tablets, stacked again in the narrow desktop aside */
+@media (min-width: 640px) {
+  .ap-actions-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .ap-actions-2 { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* line items: description + qty/kind sub-line, amount right-aligned */
+.ap-line-sub { font-size: 12.5px; color: var(--ra-muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ap-kind {
+  display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  background: var(--ra-accent-soft); color: var(--ra-accent); letter-spacing: 0.02em;
+}
+.ap-device-total {
+  display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px;
+  border-top: 1px dashed var(--ra-line); font-size: 14px; font-weight: 700;
+}
+.ap-device-total span:last-child { font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- password page */
+.ap-narrow { max-width: 480px; margin: 8px auto 0; }
+.ap-form { display: grid; gap: 16px; margin-top: 4px; }
+.ap-field { display: grid; gap: 6px; }
+.ap-input-wrap { position: relative; display: flex; }
+.ap-input {
+  width: 100%; min-height: 48px; padding: 12px 84px 12px 14px; border: 1px solid #cfd5df; border-radius: 12px;
+  font: 16px/1.4 "DM Sans", sans-serif; color: var(--ra-ink); background: #fff;
+}
+.ap-input:focus { outline: none; border-color: var(--ra-accent); box-shadow: 0 0 0 3px #dfe4f8; }
+.ap-input[aria-invalid="true"] { border-color: #e7a29b; }
+.ap-toggle {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%); min-height: 36px; padding: 0 12px;
+  border: 0; border-radius: 9px; background: transparent; color: var(--ra-accent); font: 700 13px "DM Sans", sans-serif;
+  cursor: pointer;
+}
+.ap-toggle:hover { background: var(--ra-accent-soft); }
+.ap-hint { margin: 0; font-size: 12.5px; color: var(--ra-muted); line-height: 1.5; }
+.ap-account { margin: 0 0 6px; font-size: 14px; color: var(--ra-ink2); line-height: 1.55; }
+.ap-account strong { font-family: "SFMono-Regular", Consolas, monospace; color: var(--ra-ink); }
+.ap-form .ra-btn { width: 100%; }
+.ap-success-actions { display: grid; gap: 10px; margin-top: 4px; }
+.ap-visually-hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }

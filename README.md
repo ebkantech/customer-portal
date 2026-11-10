@@ -19,6 +19,20 @@ A standalone Next.js App Router frontend intended to work with the existing Lapt
 | `/portal/dashboard` | Dashboard for a session Django accepts on `/portal/me/`; otherwise back to `/`. |
 | `/portal` | Dashboard for a valid session, else the last opened invitation's OTP form, else "Open your invitation link". |
 
+### One-time link pages
+
+Django builds these links on `PUBLIC_FRONTEND_URL` (this portal; `http://localhost:3000` locally). None of them use the portal session; the token in the URL is sent only to its Django endpoint, and each page is `noindex` / `no-referrer`.
+
+| Route | Django API | Decisions |
+|---|---|---|
+| `/rental-approval/<token>` | `/api/public/rental-approvals/<token>/` | approve, reject, request changes |
+| `/repair-approval/<token>` | `/api/public/repair-approvals/<token>/` | approve, reject |
+| `/repair-order-approval/<token>` | `/api/public/repair-order-approvals/<token>/` | approve all devices, reject order |
+| `/lead-approval/<token>` | `/api/public/lead-approvals/<token>/` | approve, decline, ask for changes (on-site service bill) |
+| `/set-password/<uid>/<token>` | `/api/auth/password-setup/<uid>/<token>/` | staff sets a new password (single use, 24 h) |
+
+Approval links last 24 hours and a newer link replaces the previous one; Django answers 404 (unknown), 410 (expired / replaced) or 409 (a different decision already recorded). Shared page logic lives in `app/components/approval/`.
+
 - A stored token is never trusted on its own: the server must accept it first, and a `401`/`403` clears it.
 - `laptopbook_portal_session_invite` records which invitation the stored session was verified through, so one customer's session is never reused for another customer's link.
 - `laptopbook_portal_invite` (last opened invitation) only remembers where the OTP form is; it is not a credential and is forgotten when Django reports the link expired, revoked or invalid.
